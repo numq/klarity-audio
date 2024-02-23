@@ -68,16 +68,15 @@ void Audio::_discardProcessedBuffers() const {
 }
 
 void Audio::_cleanUp() {
-    alcMakeContextCurrent(nullptr);
+    alDeleteSources(1, &source);
     CHECK_AL_ERROR();
+
+    alcMakeContextCurrent(nullptr);
 
     alcDestroyContext(context);
     CHECK_AL_ERROR();
 
     alcCloseDevice(device);
-    CHECK_AL_ERROR();
-
-    alDeleteSources(1, &source);
     CHECK_AL_ERROR();
 
     delete stretch;
@@ -117,6 +116,10 @@ Audio::Audio(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels) {
 
 Audio::~Audio() {
     std::lock_guard<std::mutex> lock(mutex);
+
+    _discardQueuedBuffers();
+
+    _discardProcessedBuffers();
 
     _cleanUp();
 }
