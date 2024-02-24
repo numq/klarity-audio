@@ -69,15 +69,12 @@ void Audio::_discardProcessedBuffers() const {
 
 void Audio::_cleanUp() {
     alDeleteSources(1, &source);
-    CHECK_AL_ERROR();
 
     alcMakeContextCurrent(nullptr);
 
     alcDestroyContext(context);
-    CHECK_AL_ERROR();
 
     alcCloseDevice(device);
-    CHECK_AL_ERROR();
 
     delete stretch;
 }
