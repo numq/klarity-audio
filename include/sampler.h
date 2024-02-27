@@ -1,5 +1,5 @@
-#ifndef KLARITY_AUDIO_AUDIO_H
-#define KLARITY_AUDIO_AUDIO_H
+#ifndef KLARITY_AUDIO_SAMPLER_H
+#define KLARITY_AUDIO_SAMPLER_H
 
 #include <mutex>
 #include <vector>
@@ -8,9 +8,9 @@
 #include "openal/al.h"
 #include "stretch/stretch.h"
 
-class IAudio {
+class ISampler {
 public:
-    virtual ~IAudio() = default;
+    virtual ~ISampler() = default;
 
     virtual void setPlaybackSpeed(float factor) = 0;
 
@@ -25,7 +25,7 @@ public:
     virtual void stop() = 0;
 };
 
-class Audio : public IAudio {
+class Sampler : public ISampler {
 private:
     std::mutex mutex;
     const int MIN_BUFFERS_NUM = 3;
@@ -50,9 +50,9 @@ private:
     void _cleanUp();
 
 public:
-    explicit Audio(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels);
+    explicit Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels);
 
-    ~Audio() override;
+    ~Sampler() override;
 
     void setPlaybackSpeed(float factor) override;
 
@@ -67,4 +67,4 @@ public:
     void stop() override;
 };
 
-#endif //KLARITY_AUDIO_AUDIO_H
+#endif //KLARITY_AUDIO_SAMPLER_H

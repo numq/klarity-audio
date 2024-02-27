@@ -1,8 +1,8 @@
-#include "audio.h"
+#include "sampler.h"
 
 #define CHECK_AL_ERROR() _checkALError(__FILE__, __LINE__)
 
-std::vector<uint8_t> Audio::_convertSamples(float *samples, uint64_t size) {
+std::vector<uint8_t> Sampler::_convertSamples(float *samples, uint64_t size) {
     size_t numS16Samples = size / 2;
 
     std::vector<uint8_t> s16Samples(numS16Samples * sizeof(int16_t) * 2);
@@ -23,14 +23,14 @@ std::vector<uint8_t> Audio::_convertSamples(float *samples, uint64_t size) {
     return s16Samples;
 }
 
-void Audio::_checkALError(const char *file, int line) {
+void Sampler::_checkALError(const char *file, int line) {
     ALenum error = alGetError();
     if (error != AL_NO_ERROR) {
         std::cerr << "OpenAL error at " << file << ":" << line << " - " << alGetString(error) << std::endl;
     }
 }
 
-ALenum Audio::_getFormat(uint32_t bitsPerSample, uint32_t channels) {
+ALenum Sampler::_getFormat(uint32_t bitsPerSample, uint32_t channels) {
     if (channels == 1) {
         if (bitsPerSample == 8) {
             return AL_FORMAT_MONO8;
@@ -47,7 +47,7 @@ ALenum Audio::_getFormat(uint32_t bitsPerSample, uint32_t channels) {
     return AL_NONE;
 }
 
-void Audio::_discardQueuedBuffers() const {
+void Sampler::_discardQueuedBuffers() const {
     ALint buffers = 0;
     alGetSourcei(source, AL_BUFFERS_QUEUED, &buffers);
     if (buffers > 0) {
@@ -57,7 +57,7 @@ void Audio::_discardQueuedBuffers() const {
     }
 }
 
-void Audio::_discardProcessedBuffers() const {
+void Sampler::_discardProcessedBuffers() const {
     ALint buffers = 0;
     alGetSourcei(source, AL_BUFFERS_PROCESSED, &buffers);
     if (buffers > 0) {
@@ -67,7 +67,7 @@ void Audio::_discardProcessedBuffers() const {
     }
 }
 
-void Audio::_cleanUp() {
+void Sampler::_cleanUp() {
     alDeleteSources(1, &source);
 
     alcMakeContextCurrent(nullptr);
@@ -79,7 +79,7 @@ void Audio::_cleanUp() {
     delete stretch;
 }
 
-Audio::Audio(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels) {
+Sampler::Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels) {
     std::lock_guard<std::mutex> lock(mutex);
 
     this->sampleRate = sampleRate;
@@ -111,7 +111,7 @@ Audio::Audio(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels) {
     stretch->presetDefault((int) channels, (float) sampleRate);
 }
 
-Audio::~Audio() {
+Sampler::~Sampler() {
     std::lock_guard<std::mutex> lock(mutex);
 
     _discardQueuedBuffers();
@@ -121,7 +121,7 @@ Audio::~Audio() {
     _cleanUp();
 }
 
-void Audio::setPlaybackSpeed(float factor) {
+void Sampler::setPlaybackSpeed(float factor) {
     std::lock_guard<std::mutex> lock(mutex);
 
     this->playbackSpeedFactor = factor;
@@ -129,7 +129,7 @@ void Audio::setPlaybackSpeed(float factor) {
     stretch->reset();
 }
 
-bool Audio::setVolume(float value) {
+bool Sampler::setVolume(float value) {
     std::lock_guard<std::mutex> lock(mutex);
 
     if (0.0f <= value && value <= 1.0f) {
@@ -146,7 +146,7 @@ bool Audio::setVolume(float value) {
     return false;
 }
 
-bool Audio::play(uint8_t *samples, uint64_t size) {
+bool Sampler::play(uint8_t *samples, uint64_t size) {
     std::lock_guard<std::mutex> lock(mutex);
 
     _discardProcessedBuffers();
@@ -198,14 +198,14 @@ bool Audio::play(uint8_t *samples, uint64_t size) {
     return false;
 }
 
-void Audio::pause() {
+void Sampler::pause() {
     std::lock_guard<std::mutex> lock(mutex);
 
     alSourcePause(source);
     CHECK_AL_ERROR();
 }
 
-void Audio::resume() {
+void Sampler::resume() {
     std::lock_guard<std::mutex> lock(mutex);
 
     ALint sourceState;
@@ -217,7 +217,7 @@ void Audio::resume() {
     }
 }
 
-void Audio::stop() {
+void Sampler::stop() {
     std::lock_guard<std::mutex> lock(mutex);
 
     alSourceStop(source);
