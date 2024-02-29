@@ -125,8 +125,6 @@ void Sampler::setPlaybackSpeed(float factor) {
     std::lock_guard<std::mutex> lock(mutex);
 
     this->playbackSpeedFactor = factor;
-
-    stretch->reset();
 }
 
 bool Sampler::setVolume(float value) {
@@ -156,17 +154,13 @@ bool Sampler::play(uint8_t *samples, uint64_t size) {
     if (buffersQueued < MIN_BUFFERS_NUM) {
         std::vector<uint8_t> pcmSamples;
 
-        if (playbackSpeedFactor == 1.0f) {
-            pcmSamples = _convertSamples(reinterpret_cast<float *>(samples), int(size / sizeof(float)));
-        } else {
-            auto stretchedSamples = stretch->process(
-                    reinterpret_cast<float *>(samples),
-                    int(size / sizeof(float)),
-                    playbackSpeedFactor
-            );
+        auto stretchedSamples = stretch->process(
+                reinterpret_cast<float *>(samples),
+                int(size / sizeof(float)),
+                playbackSpeedFactor
+        );
 
-            pcmSamples = _convertSamples(stretchedSamples.data(), stretchedSamples.size());
-        }
+        pcmSamples = _convertSamples(stretchedSamples.data(), stretchedSamples.size());
 
         if (!pcmSamples.empty()) {
             ALuint buffer;
@@ -226,4 +220,6 @@ void Sampler::stop() {
     _discardQueuedBuffers();
 
     _discardProcessedBuffers();
+
+    stretch->reset();
 }
