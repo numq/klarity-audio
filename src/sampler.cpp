@@ -84,6 +84,8 @@ Sampler::Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels)
 
     this->sampleRate = sampleRate;
 
+    this->numBuffers = sampleRate / 1000;
+
     device = alcOpenDevice(nullptr);
     if (!device) {
         std::cerr << "Failed to open OpenAL device." << std::endl;
@@ -151,9 +153,10 @@ bool Sampler::play(uint8_t *samples, uint64_t size) {
 
     ALint buffersQueued = 0;
     alGetSourcei(source, AL_BUFFERS_QUEUED, &buffersQueued);
-    if (buffersQueued < MIN_BUFFERS_NUM) {
+    if (buffersQueued < numBuffers) {
         std::vector<uint8_t> pcmSamples;
 
+//        if (buffersQueued == 0 && playbackSpeedFactor != 1.0f) {
         auto stretchedSamples = stretch->process(
                 reinterpret_cast<float *>(samples),
                 int(size / sizeof(float)),
@@ -161,6 +164,9 @@ bool Sampler::play(uint8_t *samples, uint64_t size) {
         );
 
         pcmSamples = _convertSamples(stretchedSamples.data(), stretchedSamples.size());
+//        } else {
+//            pcmSamples = _convertSamples(reinterpret_cast<float *>(samples), int(size / sizeof(float)));
+//        }
 
         if (!pcmSamples.empty()) {
             ALuint buffer;

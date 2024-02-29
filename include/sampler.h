@@ -28,11 +28,11 @@ public:
 class Sampler : public ISampler {
 private:
     std::mutex mutex;
-    const int MIN_BUFFERS_NUM = 3;
     ALenum format = AL_NONE;
     float playbackSpeedFactor = 1.0f;
     uint32_t source;
     uint32_t sampleRate;
+    uint32_t numBuffers;
     ALCdevice *device;
     ALCcontext *context;
     Stretch<float> *stretch;
