@@ -27,12 +27,13 @@ public:
 
 class Sampler : public ISampler {
 private:
+    const int32_t MIN_NUM_BUFFERS = 3;
     std::mutex mutex;
     ALenum format = AL_NONE;
     float playbackSpeedFactor = 1.0f;
     uint32_t source;
     uint32_t sampleRate;
-    uint32_t numBuffers;
+    uint32_t numBuffers = MIN_NUM_BUFFERS;
     ALCdevice *device;
     ALCcontext *context;
     Stretch<float> *stretch;
@@ -47,10 +48,14 @@ private:
 
     void _discardProcessedBuffers() const;
 
+    void _initialize(uint32_t bitsPerSample, uint32_t channels);
+
     void _cleanUp();
 
 public:
-    explicit Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels);
+    Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels);
+
+    Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels, uint32_t numBuffers);
 
     ~Sampler() override;
 

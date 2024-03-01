@@ -2,6 +2,7 @@
 
 #define CHECK_AL_ERROR() _checkALError(__FILE__, __LINE__)
 
+
 std::vector<uint8_t> Sampler::_convertSamples(float *samples, uint64_t size) {
     size_t numS16Samples = size / 2;
 
@@ -67,25 +68,7 @@ void Sampler::_discardProcessedBuffers() const {
     }
 }
 
-void Sampler::_cleanUp() {
-    alDeleteSources(1, &source);
-
-    alcMakeContextCurrent(nullptr);
-
-    alcDestroyContext(context);
-
-    alcCloseDevice(device);
-
-    delete stretch;
-}
-
-Sampler::Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels) {
-    std::lock_guard<std::mutex> lock(mutex);
-
-    this->sampleRate = sampleRate;
-
-    this->numBuffers = sampleRate / 1000;
-
+void Sampler::_initialize(uint32_t bitsPerSample, uint32_t channels) {
     device = alcOpenDevice(nullptr);
     if (!device) {
         std::cerr << "Failed to open OpenAL device." << std::endl;
@@ -111,6 +94,36 @@ Sampler::Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels)
     stretch = new Stretch();
 
     stretch->presetDefault((int) channels, (float) sampleRate);
+}
+
+void Sampler::_cleanUp() {
+    alDeleteSources(1, &source);
+
+    alcMakeContextCurrent(nullptr);
+
+    alcDestroyContext(context);
+
+    alcCloseDevice(device);
+
+    delete stretch;
+}
+
+Sampler::Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels) {
+    std::lock_guard<std::mutex> lock(mutex);
+
+    this->sampleRate = sampleRate;
+
+    _initialize(bitsPerSample, channels);
+}
+
+Sampler::Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels, uint32_t numBuffers) {
+    std::lock_guard<std::mutex> lock(mutex);
+
+    this->sampleRate = sampleRate;
+
+    this->numBuffers = numBuffers;
+
+    _initialize(bitsPerSample, channels);
 }
 
 Sampler::~Sampler() {
