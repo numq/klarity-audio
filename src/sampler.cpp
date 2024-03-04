@@ -167,19 +167,13 @@ bool Sampler::play(uint8_t *samples, uint64_t size) {
     ALint buffersQueued = 0;
     alGetSourcei(source, AL_BUFFERS_QUEUED, &buffersQueued);
     if (buffersQueued < numBuffers) {
-        std::vector<uint8_t> pcmSamples;
-
-//        if (buffersQueued == 0 && playbackSpeedFactor != 1.0f) {
         auto stretchedSamples = stretch->process(
                 reinterpret_cast<float *>(samples),
                 int(size / sizeof(float)),
                 playbackSpeedFactor
         );
 
-        pcmSamples = _convertSamples(stretchedSamples.data(), stretchedSamples.size());
-//        } else {
-//            pcmSamples = _convertSamples(reinterpret_cast<float *>(samples), int(size / sizeof(float)));
-//        }
+        auto pcmSamples = _convertSamples(stretchedSamples.data(), stretchedSamples.size());
 
         if (!pcmSamples.empty()) {
             ALuint buffer;
