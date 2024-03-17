@@ -2,26 +2,19 @@
 
 #define CHECK_AL_ERROR() _checkALError(__FILE__, __LINE__)
 
+std::vector<uint8_t> Sampler::_convertSamples(const std::vector<float> &samples) {
+    std::vector<uint8_t> pcmSamples;
 
-std::vector<uint8_t> Sampler::_convertSamples(float *samples, uint64_t size) {
-    size_t numS16Samples = size / 2;
+    for (float sample: samples) {
+        float normalizedSample = std::max(std::min(sample, 1.0f), -1.0f);
 
-    std::vector<uint8_t> s16Samples(numS16Samples * sizeof(int16_t) * 2);
+        auto pcmValue = static_cast<int16_t>(normalizedSample * INT16_MAX);
 
-    for (size_t i = 0; i < numS16Samples; ++i) {
-        float floatValue1 = std::max(std::min(samples[i * 2], 1.0f), -1.0f);
-        float floatValue2 = std::max(std::min(samples[i * 2 + 1], 1.0f), -1.0f);
-
-        auto s16Value1 = static_cast<int16_t>(floatValue1 * 32767.0f);
-        auto s16Value2 = static_cast<int16_t>(floatValue2 * 32767.0f);
-
-        s16Samples[i * sizeof(int16_t) * 2] = static_cast<uint8_t>(s16Value1 & 0xFF);
-        s16Samples[i * sizeof(int16_t) * 2 + 1] = static_cast<uint8_t>((s16Value1 >> 8) & 0xFF);
-        s16Samples[i * sizeof(int16_t) * 2 + 2] = static_cast<uint8_t>(s16Value2 & 0xFF);
-        s16Samples[i * sizeof(int16_t) * 2 + 3] = static_cast<uint8_t>((s16Value2 >> 8) & 0xFF);
+        pcmSamples.push_back(pcmValue & 0xFF);
+        pcmSamples.push_back((pcmValue >> 8) & 0xFF);
     }
 
-    return s16Samples;
+    return pcmSamples;
 }
 
 void Sampler::_checkALError(const char *file, int line) {
@@ -88,12 +81,11 @@ void Sampler::_initialize(uint32_t bitsPerSample, uint32_t channels) {
         return;
     }
 
+    stretch = new Stretch();
+    stretch->presetDefault((int) channels, (float) sampleRate);
+
     alGenSources(1, &source);
     CHECK_AL_ERROR();
-
-    stretch = new Stretch();
-
-    stretch->presetDefault((int) channels, (float) sampleRate);
 }
 
 void Sampler::_cleanUp() {
@@ -111,7 +103,11 @@ void Sampler::_cleanUp() {
 Sampler::Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels) {
     std::lock_guard<std::mutex> lock(mutex);
 
+    this->bitsPerSample = bitsPerSample;
+
     this->sampleRate = sampleRate;
+
+    this->channels = channels;
 
     _initialize(bitsPerSample, channels);
 }
@@ -119,7 +115,11 @@ Sampler::Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels)
 Sampler::Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels, uint32_t numBuffers) {
     std::lock_guard<std::mutex> lock(mutex);
 
+    this->bitsPerSample = bitsPerSample;
+
     this->sampleRate = sampleRate;
+
+    this->channels = channels;
 
     this->numBuffers = numBuffers;
 
@@ -160,49 +160,62 @@ bool Sampler::setVolume(float value) {
 }
 
 bool Sampler::play(uint8_t *samples, uint64_t size) {
-    std::lock_guard<std::mutex> lock(mutex);
+    std::unique_lock<std::mutex> lock(mutex);
 
-    _discardProcessedBuffers();
-
-    ALint buffersQueued = 0;
+    ALint buffersQueued;
     alGetSourcei(source, AL_BUFFERS_QUEUED, &buffersQueued);
-    if (buffersQueued < numBuffers) {
-        auto stretchedSamples = stretch->process(
-                reinterpret_cast<float *>(samples),
-                int(size / sizeof(float)),
-                playbackSpeedFactor
-        );
+    CHECK_AL_ERROR();
 
-        auto pcmSamples = _convertSamples(stretchedSamples.data(), stretchedSamples.size());
+    ALint buffersProcessed;
+    alGetSourcei(source, AL_BUFFERS_PROCESSED, &buffersProcessed);
+    CHECK_AL_ERROR();
 
-        if (!pcmSamples.empty()) {
-            ALuint buffer;
-            alGenBuffers(1, &buffer);
-            CHECK_AL_ERROR();
-
-            alBufferData(
-                    buffer,
-                    format,
-                    (ALvoid *) pcmSamples.data(),
-                    (ALsizei) pcmSamples.size(),
-                    (ALsizei) sampleRate
-            );
-            CHECK_AL_ERROR();
-
-            alSourceQueueBuffers(source, 1, &buffer);
-            CHECK_AL_ERROR();
-        }
-
-        ALint sourceState;
-        alGetSourcei(source, AL_SOURCE_STATE, &sourceState);
-        if (sourceState != AL_PLAYING) {
-            alSourcePlay(source);
-        }
-
-        return true;
+    ALuint buffer;
+    if (buffersProcessed > 0) {
+        alSourceUnqueueBuffers(source, 1, &buffer);
+        CHECK_AL_ERROR();
+    } else if (buffersQueued < numBuffers) {
+        alGenBuffers(1, &buffer);
+        CHECK_AL_ERROR();
+    } else {
+        return false;
     }
 
-    return false;
+    std::vector<float> floatSamples(
+            reinterpret_cast<float *>(samples),
+            reinterpret_cast<float *>(samples) + (int) (size / sizeof(float))
+    );
+
+    auto stretchedSamples = stretch->process(
+            floatSamples.data(),
+            (int) floatSamples.size(),
+            playbackSpeedFactor
+    );
+
+    auto pcmSamples = _convertSamples(playbackSpeedFactor == 0.0f ? floatSamples : stretchedSamples);
+
+    alBufferData(
+            buffer,
+            format,
+            (ALvoid *) pcmSamples.data(),
+            (ALsizei) pcmSamples.size(),
+            (ALsizei) sampleRate
+    );
+    CHECK_AL_ERROR();
+
+    alSourceQueueBuffers(source, 1, &buffer);
+    CHECK_AL_ERROR();
+
+    ALint sourceState;
+    alGetSourcei(source, AL_SOURCE_STATE, &sourceState);
+    CHECK_AL_ERROR();
+
+    if (sourceState != AL_PLAYING) {
+        alSourcePlay(source);
+        CHECK_AL_ERROR();
+    }
+
+    return true;
 }
 
 void Sampler::pause() {

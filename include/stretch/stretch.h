@@ -57,63 +57,10 @@ struct Stretch {
 
         std::vector<float> output(outputSamples * channels);
 
-        Sample totalEnergy = 0;
-        for (int c = 0; c < channels; ++c) {
-            for (int i = 0; i < inputSamples; ++i) {
-                Sample s = input[i * channels + c];
-
-                totalEnergy += s * s;
-            }
-        }
-        if (totalEnergy < noiseFloor) {
-            if (silenceCounter >= 2 * stft.windowSize()) {
-                if (silenceFirst) {
-                    silenceFirst = false;
-                    for (auto &b: channelBands) {
-                        b.input = b.prevInput = b.output = b.prevOutput = 0;
-                        b.inputEnergy = 0;
-                    }
-                }
-
-                if (inputSamples > 0) {
-                    // copy from the input, wrapping around if needed
-                    for (int outputIndex = 0; outputIndex < outputSamples; ++outputIndex) {
-                        int inputIndex = outputIndex % inputSamples;
-                        for (int c = 0; c < channels; ++c) {
-                            output[outputIndex * channels + c] = input[inputIndex * channels + c];
-                        }
-                    }
-                } else {
-                    for (int c = 0; c < channels; ++c) {
-                        for (int outputIndex = 0; outputIndex < outputSamples; ++outputIndex) {
-                            output[outputIndex * channels + c] = 0;
-                        }
-                    }
-                }
-
-                // Store input in history buffer
-                for (int c = 0; c < channels; ++c) {
-                    auto &&bufferChannel = inputBuffer[c];
-                    int startIndex = std::max<int>(0, inputSamples - stft.windowSize());
-                    for (int i = startIndex; i < inputSamples; ++i) {
-                        bufferChannel[i] = input[i * channels + c];
-                    }
-                }
-                inputBuffer += inputSamples;
-                return {};
-            } else {
-                silenceCounter += inputSamples;
-            }
-        } else {
-            silenceCounter = 0;
-            silenceFirst = true;
-        }
-
         for (int outputIndex = 0; outputIndex < outputSamples; ++outputIndex) {
             stft.ensureValid(outputIndex, [&](int outputOffset) {
-                // Time to process a spectrum!  Where should it come from in the input?
-                int inputOffset =
-                        std::round(outputOffset * Sample(inputSamples) / outputSamples) - stft.windowSize();
+                // Time to process a spectrum! Where should it come from in the input?
+                int inputOffset = std::round(outputOffset * Sample(inputSamples) / outputSamples) - stft.windowSize();
                 int inputInterval = inputOffset - prevInputOffset;
                 prevInputOffset = inputOffset;
 
@@ -134,13 +81,11 @@ struct Stretch {
                         auto channelBands = bandsForChannel(c);
                         auto &&spectrumBands = stft.spectrum[c];
                         for (int b = 0; b < bands; ++b) {
-                            channelBands[b].input = signalsmith::perf::mul(spectrumBands[b],
-                                                                           rotCentreSpectrum[b]);
+                            channelBands[b].input = signalsmith::perf::mul(spectrumBands[b], rotCentreSpectrum[b]);
                         }
                     }
 
-                    if (inputInterval !=
-                        stft.interval()) {
+                    if (inputInterval != stft.interval()) {
                         int prevIntervalOffset = inputOffset - stft.interval();
                         for (int c = 0; c < channels; ++c) {
                             auto &&bufferChannel = inputBuffer[c];
@@ -170,8 +115,7 @@ struct Stretch {
                     auto channelBands = bandsForChannel(c);
                     auto &&spectrumBands = stft.spectrum[c];
                     for (int b = 0; b < bands; ++b) {
-                        spectrumBands[b] = signalsmith::perf::mul<true>(channelBands[b].output,
-                                                                        rotCentreSpectrum[b]);
+                        spectrumBands[b] = signalsmith::perf::mul<true>(channelBands[b].output, rotCentreSpectrum[b]);
                     }
                 }
             });
