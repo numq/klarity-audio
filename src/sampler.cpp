@@ -103,11 +103,7 @@ void Sampler::_cleanUp() {
 Sampler::Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels) {
     std::lock_guard<std::mutex> lock(mutex);
 
-    this->bitsPerSample = bitsPerSample;
-
     this->sampleRate = sampleRate;
-
-    this->channels = channels;
 
     _initialize(bitsPerSample, channels);
 }
@@ -115,11 +111,7 @@ Sampler::Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels)
 Sampler::Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels, uint32_t numBuffers) {
     std::lock_guard<std::mutex> lock(mutex);
 
-    this->bitsPerSample = bitsPerSample;
-
     this->sampleRate = sampleRate;
-
-    this->channels = channels;
 
     this->numBuffers = numBuffers;
 

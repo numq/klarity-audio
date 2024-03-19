@@ -32,9 +32,7 @@ private:
     ALenum format = AL_NONE;
     float playbackSpeedFactor = 1.0f;
     uint32_t source;
-    uint32_t bitsPerSample;
     uint32_t sampleRate;
-    uint32_t channels;
     uint32_t numBuffers = MIN_NUM_BUFFERS;
     std::vector<ALuint> buffers;
     ALCdevice *device;
