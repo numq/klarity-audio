@@ -2,21 +2,6 @@
 
 #define CHECK_AL_ERROR() _checkALError(__FILE__, __LINE__)
 
-std::vector<uint8_t> Sampler::_convertSamples(const std::vector<float> &samples) {
-    std::vector<uint8_t> pcmSamples;
-
-    for (float sample: samples) {
-        float normalizedSample = std::max(std::min(sample, 1.0f), -1.0f);
-
-        auto pcmValue = static_cast<int16_t>(normalizedSample * INT16_MAX);
-
-        pcmSamples.push_back(pcmValue & 0xFF);
-        pcmSamples.push_back((pcmValue >> 8) & 0xFF);
-    }
-
-    return pcmSamples;
-}
-
 void Sampler::_checkALError(const char *file, int line) {
     ALenum error = alGetError();
     if (error != AL_NO_ERROR) {
@@ -24,19 +9,11 @@ void Sampler::_checkALError(const char *file, int line) {
     }
 }
 
-ALenum Sampler::_getFormat(uint32_t bitsPerSample, uint32_t channels) {
+ALenum Sampler::_getFormat(uint32_t channels) {
     if (channels == 1) {
-        if (bitsPerSample == 8) {
-            return AL_FORMAT_MONO8;
-        } else if (bitsPerSample == 16) {
-            return AL_FORMAT_MONO16;
-        }
+        return AL_FORMAT_MONO_FLOAT32;
     } else if (channels == 2) {
-        if (bitsPerSample == 8) {
-            return AL_FORMAT_STEREO8;
-        } else if (bitsPerSample == 16) {
-            return AL_FORMAT_STEREO16;
-        }
+        return AL_FORMAT_STEREO_FLOAT32;
     }
     return AL_NONE;
 }
@@ -61,7 +38,7 @@ void Sampler::_discardProcessedBuffers() const {
     }
 }
 
-void Sampler::_initialize(uint32_t bitsPerSample, uint32_t channels) {
+void Sampler::_initialize(uint32_t channels) {
     device = alcOpenDevice(nullptr);
     if (!device) {
         std::cerr << "Failed to open OpenAL device." << std::endl;
@@ -75,13 +52,13 @@ void Sampler::_initialize(uint32_t bitsPerSample, uint32_t channels) {
         return;
     }
 
-    format = _getFormat(bitsPerSample, channels);
+    format = _getFormat(channels);
     if (format == AL_NONE) {
         std::cerr << "Unable to convert audio format." << std::endl;
         return;
     }
 
-    stretch = new Stretch();
+    stretch = std::make_unique<signalsmith::stretch::SignalsmithStretch<float>>();
     stretch->presetDefault((int) channels, (float) sampleRate);
 
     alGenSources(1, &source);
@@ -97,25 +74,29 @@ void Sampler::_cleanUp() {
 
     alcCloseDevice(device);
 
-    delete stretch;
+    stretch->reset();
 }
 
-Sampler::Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels) {
+Sampler::Sampler(uint32_t sampleRate, uint32_t channels) {
     std::lock_guard<std::mutex> lock(mutex);
 
     this->sampleRate = sampleRate;
 
-    _initialize(bitsPerSample, channels);
+    this->channels = channels;
+
+    _initialize(channels);
 }
 
-Sampler::Sampler(uint32_t bitsPerSample, uint32_t sampleRate, uint32_t channels, uint32_t numBuffers) {
+Sampler::Sampler(uint32_t sampleRate, uint32_t channels, uint32_t numBuffers) {
     std::lock_guard<std::mutex> lock(mutex);
 
     this->sampleRate = sampleRate;
+
+    this->channels = channels;
 
     this->numBuffers = numBuffers;
 
-    _initialize(bitsPerSample, channels);
+    _initialize(channels);
 }
 
 Sampler::~Sampler() {
@@ -173,24 +154,36 @@ bool Sampler::play(uint8_t *samples, uint64_t size) {
         return false;
     }
 
-    std::vector<float> floatSamples(
-            reinterpret_cast<float *>(samples),
-            reinterpret_cast<float *>(samples) + (int) (size / sizeof(float))
+    int inputSamples = static_cast<int>((float) size / sizeof(float) / (float) channels);
+    int outputSamples = static_cast<int>((float) inputSamples / playbackSpeedFactor);
+
+    std::vector<std::vector<float>> inputBuffers(channels, std::vector<float>(inputSamples));
+    std::vector<std::vector<float>> outputBuffers(channels, std::vector<float>(outputSamples));
+
+    for (int i = 0; i < inputSamples * channels; ++i) {
+        inputBuffers[i % channels][i / channels] = reinterpret_cast<float *>(samples)[i];
+    }
+
+    stretch->process(
+            inputBuffers,
+            inputSamples,
+            outputBuffers,
+            outputSamples
     );
 
-    auto stretchedSamples = stretch->process(
-            floatSamples.data(),
-            (int) floatSamples.size(),
-            playbackSpeedFactor
-    );
-
-    auto pcmSamples = _convertSamples(playbackSpeedFactor == 0.0f ? floatSamples : stretchedSamples);
+    std::vector<float> output;
+    output.reserve(outputSamples * channels);
+    for (int i = 0; i < outputSamples; ++i) {
+        for (int ch = 0; ch < channels; ++ch) {
+            output.push_back(outputBuffers[ch][i]);
+        }
+    }
 
     alBufferData(
             buffer,
             format,
-            (ALvoid *) pcmSamples.data(),
-            (ALsizei) pcmSamples.size(),
+            (ALvoid *) output.data(),
+            (ALsizei) (output.size() * sizeof(float)),
             (ALsizei) sampleRate
     );
     CHECK_AL_ERROR();
@@ -213,8 +206,12 @@ bool Sampler::play(uint8_t *samples, uint64_t size) {
 void Sampler::pause() {
     std::lock_guard<std::mutex> lock(mutex);
 
-    alSourcePause(source);
-    CHECK_AL_ERROR();
+    ALenum playbackState;
+    alGetSourcei(source, AL_SOURCE_STATE, &playbackState);
+    if (playbackState == AL_PLAYING) {
+        alSourcePause(source);
+        CHECK_AL_ERROR();
+    }
 }
 
 void Sampler::resume() {
@@ -222,7 +219,6 @@ void Sampler::resume() {
 
     ALint sourceState;
     alGetSourcei(source, AL_SOURCE_STATE, &sourceState);
-
     if (sourceState == AL_PAUSED) {
         alSourcePlay(source);
         CHECK_AL_ERROR();
