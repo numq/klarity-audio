@@ -9,121 +9,126 @@ void Sampler::_checkALError(const char *file, int line) {
     }
 }
 
-ALenum Sampler::_getFormat(uint32_t channels) {
-    if (channels == 1) {
-        return AL_FORMAT_MONO_FLOAT32;
-    } else if (channels == 2) {
-        return AL_FORMAT_STEREO_FLOAT32;
+Media *Sampler::_acquireMedia(uint64_t id) {
+    auto it = mediaPool.find(id);
+    if (it == mediaPool.end()) {
+        std::cerr << "Unable to find media" << std::endl;
     }
-    return AL_NONE;
+    return it->second;
 }
 
-void Sampler::_discardQueuedBuffers() const {
+void Sampler::_releaseMedia(uint64_t id) {
+    auto it = mediaPool.find(id);
+    if (it != mediaPool.end()) {
+        alSourceStop(it->second->source);
+        CHECK_AL_ERROR();
+
+        _discardQueuedBuffers(it->second->source);
+
+        _discardProcessedBuffers(it->second->source);
+
+        it->second->stretch->reset();
+
+        delete it->second;
+
+        mediaPool.erase(it);
+    }
+}
+
+void Sampler::_discardQueuedBuffers(ALuint source) {
     ALint buffers = 0;
     alGetSourcei(source, AL_BUFFERS_QUEUED, &buffers);
     if (buffers > 0) {
-        ALuint out[buffers];
-        alSourceUnqueueBuffers(source, buffers, out);
-        alDeleteBuffers(buffers, out);
+        std::vector<ALuint> out(buffers);
+        alSourceUnqueueBuffers(source, buffers, out.data());
+        alDeleteBuffers(buffers, out.data());
     }
 }
 
-void Sampler::_discardProcessedBuffers() const {
+void Sampler::_discardProcessedBuffers(ALuint source) {
     ALint buffers = 0;
     alGetSourcei(source, AL_BUFFERS_PROCESSED, &buffers);
     if (buffers > 0) {
-        ALuint out[buffers];
-        alSourceUnqueueBuffers(source, buffers, out);
-        alDeleteBuffers(buffers, out);
+        std::vector<ALuint> out(buffers);
+        alSourceUnqueueBuffers(source, buffers, out.data());
+        alDeleteBuffers(buffers, out.data());
     }
 }
 
-void Sampler::_initialize(uint32_t channels) {
-    device = alcOpenDevice(nullptr);
-    if (!device) {
+Sampler::Sampler() {
+    std::lock_guard<std::mutex> lock(mutex);
+
+    auto deviceName = alcGetString(nullptr, ALC_DEFAULT_DEVICE_SPECIFIER);
+    this->device = alcOpenDevice(deviceName);
+    if (!this->device) {
         std::cerr << "Failed to open OpenAL device." << std::endl;
-        return;
     }
 
-    context = alcCreateContext(device, nullptr);
-    if (!context || alcMakeContextCurrent(context) == ALC_FALSE) {
-        std::cerr << "Failed to create or set OpenAL context." << std::endl;
-        alcCloseDevice(device);
-        return;
+    this->context = alcCreateContext(this->device, nullptr);
+    if (!this->context) {
+        std::cerr << "Failed to create OpenAL context." << std::endl;
+        alcCloseDevice(this->device);
     }
 
-    format = _getFormat(channels);
-    if (format == AL_NONE) {
-        std::cerr << "Unable to convert audio format." << std::endl;
-        return;
+    if (alcMakeContextCurrent(this->context) == ALC_FALSE) {
+        std::cerr << "Failed to make OpenAL context current." << std::endl;
+        alcDestroyContext(this->context);
+        alcCloseDevice(this->device);
     }
-
-    stretch = std::make_unique<signalsmith::stretch::SignalsmithStretch<float>>();
-    stretch->presetDefault((int) channels, (float) sampleRate);
-
-    alGenSources(1, &source);
-    CHECK_AL_ERROR();
-}
-
-void Sampler::_cleanUp() {
-    alDeleteSources(1, &source);
-
-    alcMakeContextCurrent(nullptr);
-
-    alcDestroyContext(context);
-
-    alcCloseDevice(device);
-
-    stretch->reset();
-}
-
-Sampler::Sampler(uint32_t sampleRate, uint32_t channels) {
-    std::lock_guard<std::mutex> lock(mutex);
-
-    this->sampleRate = sampleRate;
-
-    this->channels = channels;
-
-    _initialize(channels);
-}
-
-Sampler::Sampler(uint32_t sampleRate, uint32_t channels, uint32_t numBuffers) {
-    std::lock_guard<std::mutex> lock(mutex);
-
-    this->sampleRate = sampleRate;
-
-    this->channels = channels;
-
-    this->numBuffers = numBuffers;
-
-    _initialize(channels);
 }
 
 Sampler::~Sampler() {
     std::lock_guard<std::mutex> lock(mutex);
 
-    _discardQueuedBuffers();
+    for (auto &media: mediaPool) {
+        _discardQueuedBuffers(media.second->source);
+        _discardProcessedBuffers(media.second->source);
+        _releaseMedia(media.first);
+    }
 
-    _discardProcessedBuffers();
+    alcMakeContextCurrent(nullptr);
+    if (this->context) {
+        alcDestroyContext(this->context);
+        this->context = nullptr;
+    }
 
-    _cleanUp();
+    if (this->device) {
+        alcCloseDevice(this->device);
+        this->device = nullptr;
+    }
+
+    mediaPool.clear();
 }
 
-void Sampler::setPlaybackSpeed(float factor) {
+float Sampler::getCurrentTime(uint64_t id) {
     std::lock_guard<std::mutex> lock(mutex);
 
-    this->playbackSpeedFactor = factor;
+    auto media = _acquireMedia(id);
+
+    ALfloat currentTime;
+    alGetSourcef(media->source, AL_SEC_OFFSET, &currentTime);
+    CHECK_AL_ERROR();
+
+    return currentTime;
 }
 
-bool Sampler::setVolume(float value) {
+void Sampler::setPlaybackSpeed(uint64_t id, float factor) {
     std::lock_guard<std::mutex> lock(mutex);
+
+    _acquireMedia(id)->changePlaybackSpeed(factor);
+}
+
+bool Sampler::setVolume(uint64_t id, float value) {
+    std::lock_guard<std::mutex> lock(mutex);
+
+    auto media = _acquireMedia(id);
 
     if (0.0f <= value && value <= 1.0f) {
-        alSourcef(source, AL_GAIN, value);
+        alSourcef(media->source, AL_GAIN, value);
         CHECK_AL_ERROR();
 
         ALfloat currentVolume;
-        alGetSourcef(source, AL_GAIN, &currentVolume);
+        alGetSourcef(media->source, AL_GAIN, &currentVolume);
         CHECK_AL_ERROR();
 
         return std::fabs(currentVolume - value) <= 0.01;
@@ -132,39 +137,51 @@ bool Sampler::setVolume(float value) {
     return false;
 }
 
-bool Sampler::play(uint8_t *samples, uint64_t size) {
+bool Sampler::initialize(uint64_t id, uint32_t sampleRate, uint32_t channels, uint32_t numBuffers) {
+    if (mediaPool.find(id) == mediaPool.end()) {
+        auto media = new Media(sampleRate, channels, numBuffers);
+
+        mediaPool.emplace(id, media);
+
+        return true;
+    }
+
+    return false;
+}
+
+bool Sampler::play(uint64_t id, uint8_t *samples, uint64_t size) {
     std::unique_lock<std::mutex> lock(mutex);
 
+    auto media = _acquireMedia(id);
+
     ALint buffersQueued;
-    alGetSourcei(source, AL_BUFFERS_QUEUED, &buffersQueued);
+    alGetSourcei(media->source, AL_BUFFERS_QUEUED, &buffersQueued);
     CHECK_AL_ERROR();
 
     ALint buffersProcessed;
-    alGetSourcei(source, AL_BUFFERS_PROCESSED, &buffersProcessed);
+    alGetSourcei(media->source, AL_BUFFERS_PROCESSED, &buffersProcessed);
     CHECK_AL_ERROR();
 
     ALuint buffer;
     if (buffersProcessed > 0) {
-        alSourceUnqueueBuffers(source, 1, &buffer);
+        alSourceUnqueueBuffers(media->source, 1, &buffer);
         CHECK_AL_ERROR();
-    } else if (buffersQueued < numBuffers) {
-        alGenBuffers(1, &buffer);
-        CHECK_AL_ERROR();
-    } else {
+        return false;
+    } else if (buffersQueued >= media->numBuffers) {
         return false;
     }
 
-    int inputSamples = static_cast<int>((float) size / sizeof(float) / (float) channels);
-    int outputSamples = static_cast<int>((float) inputSamples / playbackSpeedFactor);
+    int inputSamples = static_cast<int>((float) size / sizeof(float) / (float) media->channels);
+    int outputSamples = static_cast<int>((float) inputSamples / media->playbackSpeedFactor);
 
-    std::vector<std::vector<float>> inputBuffers(channels, std::vector<float>(inputSamples));
-    std::vector<std::vector<float>> outputBuffers(channels, std::vector<float>(outputSamples));
+    std::vector<std::vector<float>> inputBuffers(media->channels, std::vector<float>(inputSamples));
+    std::vector<std::vector<float>> outputBuffers(media->channels, std::vector<float>(outputSamples));
 
-    for (int i = 0; i < inputSamples * channels; ++i) {
-        inputBuffers[i % channels][i / channels] = reinterpret_cast<float *>(samples)[i];
+    for (int i = 0; i < inputSamples * media->channels; ++i) {
+        inputBuffers[i % media->channels][i / media->channels] = reinterpret_cast<float *>(samples)[i];
     }
 
-    stretch->process(
+    media->stretch->process(
             inputBuffers,
             inputSamples,
             outputBuffers,
@@ -172,68 +189,81 @@ bool Sampler::play(uint8_t *samples, uint64_t size) {
     );
 
     std::vector<float> output;
-    output.reserve(outputSamples * channels);
+    output.reserve(outputSamples * media->channels);
     for (int i = 0; i < outputSamples; ++i) {
-        for (int ch = 0; ch < channels; ++ch) {
+        for (int ch = 0; ch < media->channels; ++ch) {
             output.push_back(outputBuffers[ch][i]);
         }
     }
 
+    alGenBuffers(1, &buffer);
+    CHECK_AL_ERROR();
+
     alBufferData(
             buffer,
-            format,
+            media->format,
             (ALvoid *) output.data(),
             (ALsizei) (output.size() * sizeof(float)),
-            (ALsizei) sampleRate
+            (ALsizei) media->sampleRate
     );
     CHECK_AL_ERROR();
 
-    alSourceQueueBuffers(source, 1, &buffer);
+    alSourceQueueBuffers(media->source, 1, &buffer);
     CHECK_AL_ERROR();
 
     ALint sourceState;
-    alGetSourcei(source, AL_SOURCE_STATE, &sourceState);
+    alGetSourcei(media->source, AL_SOURCE_STATE, &sourceState);
     CHECK_AL_ERROR();
 
     if (sourceState != AL_PLAYING) {
-        alSourcePlay(source);
+        alSourcePlay(media->source);
         CHECK_AL_ERROR();
     }
 
     return true;
 }
 
-void Sampler::pause() {
+void Sampler::pause(uint64_t id) {
     std::lock_guard<std::mutex> lock(mutex);
+
+    auto media = _acquireMedia(id);
 
     ALenum playbackState;
-    alGetSourcei(source, AL_SOURCE_STATE, &playbackState);
+    alGetSourcei(media->source, AL_SOURCE_STATE, &playbackState);
     if (playbackState == AL_PLAYING) {
-        alSourcePause(source);
+        alSourcePause(media->source);
         CHECK_AL_ERROR();
     }
 }
 
-void Sampler::resume() {
+void Sampler::resume(uint64_t id) {
     std::lock_guard<std::mutex> lock(mutex);
+
+    auto media = _acquireMedia(id);
 
     ALint sourceState;
-    alGetSourcei(source, AL_SOURCE_STATE, &sourceState);
+    alGetSourcei(media->source, AL_SOURCE_STATE, &sourceState);
     if (sourceState == AL_PAUSED) {
-        alSourcePlay(source);
+        alSourcePlay(media->source);
         CHECK_AL_ERROR();
     }
 }
 
-void Sampler::stop() {
+void Sampler::stop(uint64_t id) {
     std::lock_guard<std::mutex> lock(mutex);
 
-    alSourceStop(source);
+    auto media = _acquireMedia(id);
+
+    _discardQueuedBuffers(media->source);
+
+    _discardProcessedBuffers(media->source);
+
+    alSourceStop(media->source);
     CHECK_AL_ERROR();
+}
 
-    _discardQueuedBuffers();
+void Sampler::close(uint64_t id) {
+    std::lock_guard<std::mutex> lock(mutex);
 
-    _discardProcessedBuffers();
-
-    stretch->reset();
+    _releaseMedia(id);
 }
