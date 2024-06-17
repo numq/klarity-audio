@@ -138,6 +138,8 @@ bool Sampler::setVolume(uint64_t id, float value) {
 }
 
 bool Sampler::initialize(uint64_t id, uint32_t sampleRate, uint32_t channels, uint32_t numBuffers) {
+    std::lock_guard<std::mutex> lock(mutex);
+
     if (mediaPool.find(id) == mediaPool.end()) {
         auto media = new Media(sampleRate, channels, numBuffers);
 
