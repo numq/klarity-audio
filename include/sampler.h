@@ -47,10 +47,6 @@ private:
 
     void _releaseMedia(uint64_t id);
 
-    static void _discardQueuedBuffers(uint32_t source);
-
-    static void _discardProcessedBuffers(uint32_t source);
-
 public:
     Sampler();
 
