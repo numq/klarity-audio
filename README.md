@@ -14,5 +14,4 @@ Audio library with basic playback functionality and time stretching
 
 ## Credits
 
-* [Signalsmith Audio](https://github.com/Signalsmith-Audio/signalsmith-stretch): Awesome C++11 library for pitch and
-  time stretching
+* [Signalsmith Audio](https://github.com/Signalsmith-Audio/signalsmith-stretch) - awesome C++11 library for pitch and time stretching
