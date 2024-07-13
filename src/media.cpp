@@ -38,10 +38,32 @@ Media::Media(uint32_t sampleRate, uint32_t channels, uint32_t numBuffers) {
 
     this->numBuffers = numBuffers;
 
-    this->format = (channels == 1) ? AL_FORMAT_MONO_FLOAT32 : (channels == 2) ? AL_FORMAT_STEREO_FLOAT32 : AL_NONE;
+    format = (channels == 1) ? AL_FORMAT_MONO_FLOAT32 : (channels == 2) ? AL_FORMAT_STEREO_FLOAT32 : AL_NONE;
 
-    if (this->format == AL_NONE) {
+    if (format == AL_NONE) {
         std::cerr << "Unsupported audio format." << std::endl;
+        return;
+    }
+
+    auto deviceName = alcGetString(nullptr, ALC_DEFAULT_DEVICE_SPECIFIER);
+    device = alcOpenDevice(deviceName);
+    if (!device) {
+        std::cerr << "Failed to open OpenAL device." << std::endl;
+        return;
+    }
+
+    context = alcCreateContext(device, nullptr);
+    if (!context) {
+        std::cerr << "Failed to create OpenAL context." << std::endl;
+        alcCloseDevice(device);
+        return;
+    }
+
+    if (alcMakeContextCurrent(context) == ALC_FALSE) {
+        std::cerr << "Failed to make OpenAL context current." << std::endl;
+        alcDestroyContext(context);
+        alcCloseDevice(device);
+        return;
     }
 
     alGenSources(1, &source);
@@ -51,9 +73,9 @@ Media::Media(uint32_t sampleRate, uint32_t channels, uint32_t numBuffers) {
         return;
     }
 
-    this->stretch = new signalsmith::stretch::SignalsmithStretch<float>();
+    stretch = new signalsmith::stretch::SignalsmithStretch<float>();
 
-    this->stretch->presetDefault((int) this->channels, (float) this->sampleRate);
+    stretch->presetDefault((int) channels, (float) sampleRate);
 }
 
 Media::~Media() {
@@ -70,6 +92,17 @@ Media::~Media() {
         CHECK_AL_ERROR();
 
         source = AL_NONE;
+    }
+
+    if (context) {
+        alcMakeContextCurrent(nullptr);
+        alcDestroyContext(context);
+        context = nullptr;
+    }
+
+    if (device) {
+        alcCloseDevice(device);
+        device = nullptr;
     }
 
     if (stretch != nullptr) {
@@ -96,7 +129,7 @@ float Media::getCurrentTime() {
 void Media::setPlaybackSpeed(float factor) {
     std::lock_guard<std::mutex> lock(mutex);
 
-    this->playbackSpeedFactor = factor;
+    playbackSpeedFactor = factor;
 }
 
 bool Media::setVolume(float value) {

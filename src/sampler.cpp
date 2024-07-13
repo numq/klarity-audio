@@ -25,47 +25,12 @@ void Sampler::_releaseMedia(uint64_t id) {
     }
 }
 
-Sampler::Sampler() {
-    std::lock_guard<std::mutex> lock(mutex);
-
-    auto deviceName = alcGetString(nullptr, ALC_DEFAULT_DEVICE_SPECIFIER);
-    this->device = alcOpenDevice(deviceName);
-    if (!this->device) {
-        std::cerr << "Failed to open OpenAL device." << std::endl;
-    }
-
-    this->context = alcCreateContext(this->device, nullptr);
-    if (!this->context) {
-        std::cerr << "Failed to create OpenAL context." << std::endl;
-        alcCloseDevice(this->device);
-    }
-
-    if (alcMakeContextCurrent(this->context) == ALC_FALSE) {
-        std::cerr << "Failed to make OpenAL context current." << std::endl;
-        alcDestroyContext(this->context);
-        alcCloseDevice(this->device);
-    }
-}
-
 Sampler::~Sampler() {
     std::lock_guard<std::mutex> lock(mutex);
 
     for (auto &media: mediaPool) {
         _releaseMedia(media.first);
     }
-
-    alcMakeContextCurrent(nullptr);
-    if (this->context) {
-        alcDestroyContext(this->context);
-        this->context = nullptr;
-    }
-
-    if (this->device) {
-        alcCloseDevice(this->device);
-        this->device = nullptr;
-    }
-
-    mediaPool.clear();
 }
 
 float Sampler::getCurrentTime(uint64_t id) {
