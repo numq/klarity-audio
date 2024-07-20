@@ -45,27 +45,6 @@ Media::Media(uint32_t sampleRate, uint32_t channels, uint32_t numBuffers) {
         return;
     }
 
-    auto deviceName = alcGetString(nullptr, ALC_DEFAULT_DEVICE_SPECIFIER);
-    device = alcOpenDevice(deviceName);
-    if (!device) {
-        std::cerr << "Failed to open OpenAL device." << std::endl;
-        return;
-    }
-
-    context = alcCreateContext(device, nullptr);
-    if (!context) {
-        std::cerr << "Failed to create OpenAL context." << std::endl;
-        alcCloseDevice(device);
-        return;
-    }
-
-    if (alcMakeContextCurrent(context) == ALC_FALSE) {
-        std::cerr << "Failed to make OpenAL context current." << std::endl;
-        alcDestroyContext(context);
-        alcCloseDevice(device);
-        return;
-    }
-
     alGenSources(1, &source);
 
     if (alGetError() != AL_NO_ERROR) {
@@ -92,17 +71,6 @@ Media::~Media() {
         CHECK_AL_ERROR();
 
         source = AL_NONE;
-    }
-
-    if (context) {
-        alcMakeContextCurrent(nullptr);
-        alcDestroyContext(context);
-        context = nullptr;
-    }
-
-    if (device) {
-        alcCloseDevice(device);
-        device = nullptr;
     }
 
     if (stretch != nullptr) {
@@ -151,7 +119,7 @@ bool Media::setVolume(float value) {
     return std::fabs(currentVolume - value) <= 0.01;
 }
 
-bool Media::play(uint8_t *samples, uint64_t size) {
+bool Media::play(const uint8_t *samples, uint64_t size) {
     std::unique_lock<std::mutex> lock(mutex);
 
     if (!stretch || source == AL_NONE) {
@@ -171,13 +139,26 @@ bool Media::play(uint8_t *samples, uint64_t size) {
     alGetSourcei(source, AL_BUFFERS_PROCESSED, &buffersProcessed);
     CHECK_AL_ERROR();
 
+//    ALuint buffer;
+//    if (buffersProcessed > 0) {
+//        alSourceUnqueueBuffers(source, 1, &buffer);
+//        CHECK_AL_ERROR();
+//        return false;
+//    } else if (buffersQueued >= numBuffers) {
+//        return false;
+//    }
+
+    if (buffersQueued >= numBuffers) {
+        return false;
+    }
+
     ALuint buffer;
     if (buffersProcessed > 0) {
         alSourceUnqueueBuffers(source, 1, &buffer);
         CHECK_AL_ERROR();
-        return false;
-    } else if (buffersQueued >= numBuffers) {
-        return false;
+    } else {
+        alGenBuffers(1, &buffer);
+        CHECK_AL_ERROR();
     }
 
     int inputSamples = static_cast<int>((float) size / sizeof(float) / (float) channels);
@@ -187,7 +168,7 @@ bool Media::play(uint8_t *samples, uint64_t size) {
     std::vector<std::vector<float>> outputBuffers(channels, std::vector<float>(outputSamples));
 
     for (int i = 0; i < inputSamples * channels; ++i) {
-        inputBuffers[i % channels][i / channels] = reinterpret_cast<float *>(samples)[i];
+        inputBuffers[i % channels][i / channels] = reinterpret_cast<const float *>(samples)[i];
     }
 
     stretch->process(

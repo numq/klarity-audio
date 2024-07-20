@@ -25,11 +25,45 @@ void Sampler::_releaseMedia(uint64_t id) {
     }
 }
 
+Sampler::Sampler() {
+    auto deviceName = alcGetString(nullptr, ALC_DEFAULT_DEVICE_SPECIFIER);
+    device = alcOpenDevice(deviceName);
+    if (!device) {
+        std::cerr << "Failed to open OpenAL device." << std::endl;
+        return;
+    }
+
+    context = alcCreateContext(device, nullptr);
+    if (!context) {
+        std::cerr << "Failed to create OpenAL context." << std::endl;
+        alcCloseDevice(device);
+        return;
+    }
+
+    if (alcMakeContextCurrent(context) == ALC_FALSE) {
+        std::cerr << "Failed to make OpenAL context current." << std::endl;
+        alcDestroyContext(context);
+        alcCloseDevice(device);
+        return;
+    }
+}
+
 Sampler::~Sampler() {
     std::lock_guard<std::mutex> lock(mutex);
 
     for (auto &media: mediaPool) {
         _releaseMedia(media.first);
+    }
+
+    if (context) {
+        alcMakeContextCurrent(nullptr);
+        alcDestroyContext(context);
+        context = nullptr;
+    }
+
+    if (device) {
+        alcCloseDevice(device);
+        device = nullptr;
     }
 }
 
