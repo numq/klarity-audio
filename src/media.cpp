@@ -139,15 +139,6 @@ bool Media::play(const uint8_t *samples, uint64_t size) {
     alGetSourcei(source, AL_BUFFERS_PROCESSED, &buffersProcessed);
     CHECK_AL_ERROR();
 
-//    ALuint buffer;
-//    if (buffersProcessed > 0) {
-//        alSourceUnqueueBuffers(source, 1, &buffer);
-//        CHECK_AL_ERROR();
-//        return false;
-//    } else if (buffersQueued >= numBuffers) {
-//        return false;
-//    }
-
     if (buffersQueued >= numBuffers) {
         return false;
     }
