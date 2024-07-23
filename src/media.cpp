@@ -123,6 +123,7 @@ bool Media::play(const uint8_t *samples, uint64_t size) {
     std::unique_lock<std::mutex> lock(mutex);
 
     if (!stretch || source == AL_NONE) {
+        std::cerr << "Error: Stretch or source is not initialized." << std::endl;
         return false;
     }
 
@@ -135,13 +136,14 @@ bool Media::play(const uint8_t *samples, uint64_t size) {
     alGetSourcei(source, AL_BUFFERS_QUEUED, &buffersQueued);
     CHECK_AL_ERROR();
 
+    if (buffersQueued >= numBuffers) {
+        std::cerr << "Warning: Too many buffers queued." << std::endl;
+        return false;
+    }
+
     ALint buffersProcessed;
     alGetSourcei(source, AL_BUFFERS_PROCESSED, &buffersProcessed);
     CHECK_AL_ERROR();
-
-    if (buffersQueued >= numBuffers) {
-        return false;
-    }
 
     ALuint buffer;
     if (buffersProcessed > 0) {
@@ -162,12 +164,7 @@ bool Media::play(const uint8_t *samples, uint64_t size) {
         inputBuffers[i % channels][i / channels] = reinterpret_cast<const float *>(samples)[i];
     }
 
-    stretch->process(
-            inputBuffers,
-            inputSamples,
-            outputBuffers,
-            outputSamples
-    );
+    stretch->process(inputBuffers, inputSamples, outputBuffers, outputSamples);
 
     std::vector<float> output;
     output.reserve(outputSamples * channels);
@@ -176,9 +173,6 @@ bool Media::play(const uint8_t *samples, uint64_t size) {
             output.push_back(outputBuffers[ch][i]);
         }
     }
-
-    alGenBuffers(1, &buffer);
-    CHECK_AL_ERROR();
 
     alBufferData(
             buffer,
@@ -211,9 +205,9 @@ void Media::pause() {
         return;
     }
 
-    ALenum playbackState;
-    alGetSourcei(source, AL_SOURCE_STATE, &playbackState);
-    if (playbackState == AL_PLAYING) {
+    ALenum sourceState;
+    alGetSourcei(source, AL_SOURCE_STATE, &sourceState);
+    if (sourceState == AL_PLAYING) {
         alSourcePause(source);
         CHECK_AL_ERROR();
     }
