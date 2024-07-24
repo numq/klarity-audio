@@ -38,39 +38,39 @@ Media::Media(uint32_t sampleRate, uint32_t channels, uint32_t numBuffers) {
 
     this->numBuffers = numBuffers;
 
-    format = (channels == 1) ? AL_FORMAT_MONO_FLOAT32 : (channels == 2) ? AL_FORMAT_STEREO_FLOAT32 : AL_NONE;
+    this->format = (channels == 1) ? AL_FORMAT_MONO_FLOAT32 : (channels == 2) ? AL_FORMAT_STEREO_FLOAT32 : AL_NONE;
 
-    if (format == AL_NONE) {
+    if (this->format == AL_NONE) {
         std::cerr << "Unsupported audio format." << std::endl;
         return;
     }
 
-    alGenSources(1, &source);
+    alGenSources(1, &this->source);
 
     if (alGetError() != AL_NO_ERROR) {
-        source = AL_NONE;
+        this->source = AL_NONE;
         return;
     }
 
-    stretch = new signalsmith::stretch::SignalsmithStretch<float>();
+    this->stretch = new signalsmith::stretch::SignalsmithStretch<float>();
 
-    stretch->presetDefault((int) channels, (float) sampleRate);
+    this->stretch->presetDefault((int) channels, (float) sampleRate);
 }
 
 Media::~Media() {
     std::lock_guard<std::mutex> lock(mutex);
 
-    if (source != AL_NONE) {
-        alSourceStop(source);
+    if (this->source != AL_NONE) {
+        alSourceStop(this->source);
         CHECK_AL_ERROR();
 
         _discardQueuedBuffers();
         _discardProcessedBuffers();
 
-        alDeleteSources(1, &source);
+        alDeleteSources(1, &this->source);
         CHECK_AL_ERROR();
 
-        source = AL_NONE;
+        this->source = AL_NONE;
     }
 
     if (stretch != nullptr) {
