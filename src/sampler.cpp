@@ -27,23 +27,23 @@ void Sampler::_releaseMedia(uint64_t id) {
 
 Sampler::Sampler() {
     auto deviceName = alcGetString(nullptr, ALC_DEFAULT_DEVICE_SPECIFIER);
-    device = alcOpenDevice(deviceName);
-    if (!device) {
+    this->device = alcOpenDevice(deviceName);
+    if (!this->device) {
         std::cerr << "Failed to open OpenAL device." << std::endl;
         return;
     }
 
-    context = alcCreateContext(device, nullptr);
-    if (!context) {
+    this->context = alcCreateContext(this->device, nullptr);
+    if (!this->context) {
         std::cerr << "Failed to create OpenAL context." << std::endl;
-        alcCloseDevice(device);
+        alcCloseDevice(this->device);
         return;
     }
 
-    if (alcMakeContextCurrent(context) == ALC_FALSE) {
+    if (alcMakeContextCurrent(this->context) == ALC_FALSE) {
         std::cerr << "Failed to make OpenAL context current." << std::endl;
-        alcDestroyContext(context);
-        alcCloseDevice(device);
+        alcDestroyContext(this->context);
+        alcCloseDevice(this->device);
         return;
     }
 }
@@ -55,15 +55,15 @@ Sampler::~Sampler() {
         _releaseMedia(media.first);
     }
 
-    if (context) {
+    if (this->context) {
         alcMakeContextCurrent(nullptr);
-        alcDestroyContext(context);
-        context = nullptr;
+        alcDestroyContext(this->context);
+        this->context = nullptr;
     }
 
-    if (device) {
-        alcCloseDevice(device);
-        device = nullptr;
+    if (this->device) {
+        alcCloseDevice(this->device);
+        this->device = nullptr;
     }
 }
 
@@ -121,7 +121,6 @@ bool Sampler::play(uint64_t id, uint8_t *samples, uint64_t size) {
     }
 
     auto media = _acquireMedia(id);
-
     if (media) {
         return media->play(samples, size);
     }
