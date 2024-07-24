@@ -12,20 +12,26 @@ void Media::_checkALError(const char *file, int line) {
 void Media::_discardQueuedBuffers() const {
     ALint buffers = 0;
     alGetSourcei(source, AL_BUFFERS_QUEUED, &buffers);
+    CHECK_AL_ERROR();
     if (buffers > 0) {
         std::vector<ALuint> out(buffers);
         alSourceUnqueueBuffers(source, buffers, out.data());
+        CHECK_AL_ERROR();
         alDeleteBuffers(buffers, out.data());
+        CHECK_AL_ERROR();
     }
 }
 
 void Media::_discardProcessedBuffers() const {
     ALint buffers = 0;
     alGetSourcei(source, AL_BUFFERS_PROCESSED, &buffers);
+    CHECK_AL_ERROR();
     if (buffers > 0) {
         std::vector<ALuint> out(buffers);
         alSourceUnqueueBuffers(source, buffers, out.data());
+        CHECK_AL_ERROR();
         alDeleteBuffers(buffers, out.data());
+        CHECK_AL_ERROR();
     }
 }
 
@@ -45,16 +51,17 @@ Media::Media(uint32_t sampleRate, uint32_t channels, uint32_t numBuffers) {
         return;
     }
 
+    this->stretch = new signalsmith::stretch::SignalsmithStretch<float>();
+
+    this->stretch->presetDefault((int) channels, (float) sampleRate);
+
     alGenSources(1, &this->source);
+    CHECK_AL_ERROR();
 
     if (alGetError() != AL_NO_ERROR) {
         this->source = AL_NONE;
         return;
     }
-
-    this->stretch = new signalsmith::stretch::SignalsmithStretch<float>();
-
-    this->stretch->presetDefault((int) channels, (float) sampleRate);
 }
 
 Media::~Media() {
@@ -132,70 +139,72 @@ bool Media::play(const uint8_t *samples, uint64_t size) {
         return false;
     }
 
-    ALint buffersQueued;
-    alGetSourcei(source, AL_BUFFERS_QUEUED, &buffersQueued);
-    CHECK_AL_ERROR();
-
-    if (buffersQueued >= numBuffers) {
-        std::cerr << "Warning: Too many buffers queued." << std::endl;
-        return false;
-    }
-
-    ALint buffersProcessed;
-    alGetSourcei(source, AL_BUFFERS_PROCESSED, &buffersProcessed);
-    CHECK_AL_ERROR();
-
-    ALuint buffer;
-    if (buffersProcessed > 0) {
-        alSourceUnqueueBuffers(source, 1, &buffer);
-        CHECK_AL_ERROR();
-    } else {
-        alGenBuffers(1, &buffer);
-        CHECK_AL_ERROR();
-    }
-
-    int inputSamples = static_cast<int>((float) size / sizeof(float) / (float) channels);
-    int outputSamples = static_cast<int>((float) inputSamples / playbackSpeedFactor);
-
-    std::vector<std::vector<float>> inputBuffers(channels, std::vector<float>(inputSamples));
-    std::vector<std::vector<float>> outputBuffers(channels, std::vector<float>(outputSamples));
-
-    for (int i = 0; i < inputSamples * channels; ++i) {
-        inputBuffers[i % channels][i / channels] = reinterpret_cast<const float *>(samples)[i];
-    }
-
-    stretch->process(inputBuffers, inputSamples, outputBuffers, outputSamples);
-
-    std::vector<float> output;
-    output.reserve(outputSamples * channels);
-    for (int i = 0; i < outputSamples; ++i) {
-        for (int ch = 0; ch < channels; ++ch) {
-            output.push_back(outputBuffers[ch][i]);
-        }
-    }
-
-    alBufferData(
-            buffer,
-            format,
-            (ALvoid *) output.data(),
-            (ALsizei) (output.size() * sizeof(float)),
-            (ALsizei) sampleRate
-    );
-    CHECK_AL_ERROR();
-
-    alSourceQueueBuffers(source, 1, &buffer);
-    CHECK_AL_ERROR();
-
     ALint sourceState;
     alGetSourcei(source, AL_SOURCE_STATE, &sourceState);
     CHECK_AL_ERROR();
-
-    if (sourceState != AL_PLAYING) {
+    if (sourceState == AL_INITIAL) {
         alSourcePlay(source);
         CHECK_AL_ERROR();
     }
 
-    return true;
+    if (sourceState == AL_PLAYING) {
+        ALint buffersQueued;
+        alGetSourcei(source, AL_BUFFERS_QUEUED, &buffersQueued);
+        CHECK_AL_ERROR();
+
+        if (buffersQueued >= numBuffers) {
+            return false;
+        }
+
+        ALint buffersProcessed;
+        alGetSourcei(source, AL_BUFFERS_PROCESSED, &buffersProcessed);
+        CHECK_AL_ERROR();
+
+        ALuint buffer;
+        if (buffersProcessed > 0) {
+            alSourceUnqueueBuffers(source, 1, &buffer);
+            CHECK_AL_ERROR();
+        } else {
+            alGenBuffers(1, &buffer);
+            CHECK_AL_ERROR();
+        }
+
+        int inputSamples = static_cast<int>((float) size / sizeof(float) / (float) channels);
+        int outputSamples = static_cast<int>((float) inputSamples / playbackSpeedFactor);
+
+        std::vector<std::vector<float>> inputBuffers(channels, std::vector<float>(inputSamples));
+        std::vector<std::vector<float>> outputBuffers(channels, std::vector<float>(outputSamples));
+
+        for (int i = 0; i < inputSamples * channels; ++i) {
+            inputBuffers[i % channels][i / channels] = reinterpret_cast<const float *>(samples)[i];
+        }
+
+        stretch->process(inputBuffers, inputSamples, outputBuffers, outputSamples);
+
+        std::vector<float> output;
+        output.reserve(outputSamples * channels);
+        for (int i = 0; i < outputSamples; ++i) {
+            for (int ch = 0; ch < channels; ++ch) {
+                output.push_back(outputBuffers[ch][i]);
+            }
+        }
+
+        alBufferData(
+                buffer,
+                format,
+                (ALvoid *) output.data(),
+                (ALsizei) (output.size() * sizeof(float)),
+                (ALsizei) sampleRate
+        );
+        CHECK_AL_ERROR();
+
+        alSourceQueueBuffers(source, 1, &buffer);
+        CHECK_AL_ERROR();
+
+        return true;
+    }
+
+    return false;
 }
 
 void Media::pause() {
@@ -207,6 +216,7 @@ void Media::pause() {
 
     ALenum sourceState;
     alGetSourcei(source, AL_SOURCE_STATE, &sourceState);
+    CHECK_AL_ERROR();
     if (sourceState == AL_PLAYING) {
         alSourcePause(source);
         CHECK_AL_ERROR();
@@ -222,6 +232,7 @@ void Media::resume() {
 
     ALint sourceState;
     alGetSourcei(source, AL_SOURCE_STATE, &sourceState);
+    CHECK_AL_ERROR();
     if (sourceState == AL_PAUSED) {
         alSourcePlay(source);
         CHECK_AL_ERROR();
@@ -235,10 +246,20 @@ void Media::stop() {
         return;
     }
 
-    alSourceStop(source);
+    ALint sourceState;
+    alGetSourcei(source, AL_SOURCE_STATE, &sourceState);
     CHECK_AL_ERROR();
+    if (sourceState == AL_PLAYING || sourceState == AL_PAUSED) {
+        alSourceStop(source);
+        CHECK_AL_ERROR();
 
-    _discardQueuedBuffers();
+        _discardQueuedBuffers();
+        _discardProcessedBuffers();
 
-    _discardProcessedBuffers();
+        alSourcei(source, AL_BUFFER, 0);
+        CHECK_AL_ERROR();
+
+        alSourceRewind(source);
+        CHECK_AL_ERROR();
+    }
 }
