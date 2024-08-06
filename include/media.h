@@ -16,6 +16,7 @@ private:
     signalsmith::stretch::SignalsmithStretch<float> *stretch;
     float playbackSpeedFactor = 1.0f;
     float volume = 1.0f;
+    uint64_t queuedSamples = 0;
 
 public:
     explicit Media(uint32_t sampleRate, uint32_t channels);

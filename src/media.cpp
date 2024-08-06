@@ -14,12 +14,6 @@ Media::Media(uint32_t sampleRate, uint32_t channels) {
     stretch = new signalsmith::stretch::SignalsmithStretch<float>();
 
     stretch->presetDefault((int) channels, (float) sampleRate);
-
-    PaError err = Pa_Initialize();
-    if (err != paNoError) {
-        std::cerr << "PortAudio error: " << Pa_GetErrorText(err) << std::endl;
-        return;
-    }
 }
 
 Media::~Media() {
@@ -43,18 +37,10 @@ int64_t Media::getCurrentTimeMicros() {
 
     if (!stretch || stream == nullptr) {
         std::cerr << "Unable to use uninitialized sampler." << std::endl;
-        return -1;
+        return 0;
     }
 
-    long framesAvailable = Pa_GetStreamReadAvailable(stream);
-
-    double streamTime = Pa_GetStreamTime(stream);
-    if (streamTime < 0) {
-        std::cerr << "Error getting stream time." << std::endl;
-        return -1;
-    }
-
-    return static_cast<int64_t>(streamTime - static_cast<float>(framesAvailable) / static_cast<float>(sampleRate));
+    return static_cast<int64_t>((static_cast<double>(queuedSamplesSize) / sampleRate) * 1e6);
 }
 
 void Media::setPlaybackSpeed(float factor) {
@@ -127,6 +113,8 @@ bool Media::start() {
         return false;
     }
 
+    queuedSamples = 0;
+
     return true;
 }
 
@@ -178,6 +166,8 @@ bool Media::play(const uint8_t *samples, uint64_t size) {
         std::cerr << "Failed to write PortAudio stream: " << Pa_GetErrorText(err) << std::endl;
         return false;
     }
+
+    queuedSamples += outputSamples;
 
     return true;
 }
@@ -244,6 +234,8 @@ bool Media::stop() {
         }
 
         stream = nullptr;
+
+        queuedSamples = 0;
 
         return true;
     }

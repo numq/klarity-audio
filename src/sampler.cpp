@@ -43,7 +43,7 @@ int64_t Sampler::getCurrentTimeMicros(int64_t id) {
     auto media = _acquireMedia(id);
     if (!media) {
         std::cerr << "Unable to find media." << std::endl;
-        return -1.0;
+        return 0;
     }
 
     return media->getCurrentTimeMicros();
