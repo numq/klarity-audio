@@ -40,7 +40,7 @@ int64_t Media::getCurrentTimeMicros() {
         return 0;
     }
 
-    return static_cast<int64_t>((static_cast<double>(queuedSamplesSize) / sampleRate) * 1e6);
+    return static_cast<int64_t>((static_cast<double>(queuedSamples) / sampleRate) * 1e6);
 }
 
 void Media::setPlaybackSpeed(float factor) {
