@@ -32,17 +32,6 @@ Media::~Media() {
     }
 }
 
-int64_t Media::getCurrentTimeMicros() {
-    std::lock_guard<std::mutex> lock(mutex);
-
-    if (!stretch || stream == nullptr) {
-        std::cerr << "Unable to use uninitialized sampler." << std::endl;
-        return 0;
-    }
-
-    return static_cast<int64_t>((static_cast<double>(queuedSamples) / sampleRate) * 1e6);
-}
-
 void Media::setPlaybackSpeed(float factor) {
     std::lock_guard<std::mutex> lock(mutex);
 
@@ -113,8 +102,6 @@ bool Media::start() {
         return false;
     }
 
-    queuedSamples = 0;
-
     return true;
 }
 
@@ -153,21 +140,11 @@ bool Media::play(const uint8_t *samples, uint64_t size) {
         }
     }
 
-    if (Pa_IsStreamActive(stream) == 0) {
-        PaError err = Pa_StartStream(stream);
-        if (err != paNoError) {
-            std::cerr << "Failed to resume PortAudio stream: " << Pa_GetErrorText(err) << std::endl;
-            return false;
-        }
-    }
-
     PaError err = Pa_WriteStream(stream, output.data(), outputSamples);
     if (err != paNoError) {
         std::cerr << "Failed to write PortAudio stream: " << Pa_GetErrorText(err) << std::endl;
         return false;
     }
-
-    queuedSamples += outputSamples;
 
     return true;
 }
@@ -234,8 +211,6 @@ bool Media::stop() {
         }
 
         stream = nullptr;
-
-        queuedSamples = 0;
 
         return true;
     }

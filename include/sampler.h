@@ -12,8 +12,6 @@ class ISampler {
 public:
     virtual ~ISampler() = default;
 
-    virtual int64_t getCurrentTimeMicros(int64_t id) = 0;
-
     virtual void setPlaybackSpeed(int64_t id, float factor) = 0;
 
     virtual void setVolume(int64_t id, float value) = 0;
@@ -46,8 +44,6 @@ public:
     explicit Sampler();
 
     ~Sampler() override;
-
-    int64_t getCurrentTimeMicros(int64_t id) override;
 
     void setPlaybackSpeed(int64_t id, float factor) override;
 

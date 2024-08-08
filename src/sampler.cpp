@@ -37,18 +37,6 @@ Sampler::~Sampler() {
     Pa_Terminate();
 }
 
-int64_t Sampler::getCurrentTimeMicros(int64_t id) {
-    std::lock_guard<std::mutex> lock(mutex);
-
-    auto media = _acquireMedia(id);
-    if (!media) {
-        std::cerr << "Unable to find media." << std::endl;
-        return 0;
-    }
-
-    return media->getCurrentTimeMicros();
-}
-
 void Sampler::setPlaybackSpeed(int64_t id, float factor) {
     std::lock_guard<std::mutex> lock(mutex);
 
