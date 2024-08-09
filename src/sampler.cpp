@@ -3,7 +3,7 @@
 Media *Sampler::_acquireMedia(int64_t id) {
     auto it = mediaPool.find(id);
     if (it == mediaPool.end()) {
-        return nullptr;
+        throw MediaNotFoundException();
     }
     return it->second;
 }
@@ -11,7 +11,7 @@ Media *Sampler::_acquireMedia(int64_t id) {
 void Sampler::_releaseMedia(int64_t id) {
     auto it = mediaPool.find(id);
     if (it == mediaPool.end()) {
-        return;
+        throw MediaNotFoundException();
     }
 
     delete it->second;
@@ -23,7 +23,7 @@ Sampler::Sampler() {
 
     PaError err = Pa_Initialize();
     if (err != paNoError) {
-        std::cerr << "Failed to initialize PortAudio: " << Pa_GetErrorText(err) << std::endl;
+        throw SamplerException("Failed to initialize PortAudio: " + std::string(Pa_GetErrorText(err)));
     }
 }
 
@@ -40,113 +40,62 @@ Sampler::~Sampler() {
 void Sampler::setPlaybackSpeed(int64_t id, float factor) {
     std::lock_guard<std::mutex> lock(mutex);
 
-    auto media = _acquireMedia(id);
-    if (!media) {
-        std::cerr << "Unable to find media." << std::endl;
-        return;
-    }
-
-    media->setPlaybackSpeed(factor);
+    _acquireMedia(id)->setPlaybackSpeed(factor);
 }
 
 void Sampler::setVolume(int64_t id, float value) {
     std::lock_guard<std::mutex> lock(mutex);
 
-    auto media = _acquireMedia(id);
-    if (!media) {
-        std::cerr << "Unable to find media." << std::endl;
-        return;
-    }
-
-    return media->setVolume(value);
+    _acquireMedia(id)->setVolume(value);
 }
 
-bool Sampler::initialize(int64_t id, uint32_t sampleRate, uint32_t channels) {
+void Sampler::initialize(int64_t id, uint32_t sampleRate, uint32_t channels) {
     std::lock_guard<std::mutex> lock(mutex);
 
     if (mediaPool.find(id) != mediaPool.end()) {
-        std::cerr << "Media with the same id already exists." << std::endl;
-        return false;
+        throw SamplerException("Media with the same id already exists");
     }
 
     if (sampleRate == 0) {
-        std::cerr << "Unable to initialize media with zero sampleRate." << std::endl;
-        return false;
+        throw SamplerException("Unable to initialize media with zero sampleRate");
     }
 
     if (channels <= 0) {
-        std::cerr << "Unable to initialize media with zero channels." << std::endl;
-        return false;
+        throw SamplerException("Unable to initialize media with zero channels");
     }
 
     auto media = new Media(sampleRate, channels);
     mediaPool.emplace(id, media);
-    return true;
 }
 
-bool Sampler::start(int64_t id) {
+void Sampler::start(int64_t id) {
     std::lock_guard<std::mutex> lock(mutex);
 
-    auto media = _acquireMedia(id);
-    if (!media) {
-        std::cerr << "Unable to find media." << std::endl;
-        return false;
-    }
-
-    return media->start();
+    _acquireMedia(id)->start();
 }
 
-bool Sampler::play(int64_t id, uint8_t *samples, uint64_t size) {
+void Sampler::play(int64_t id, uint8_t *samples, uint64_t size) {
     std::lock_guard<std::mutex> lock(mutex);
 
-    if (size <= 0) {
-        std::cerr << "Unable to play empty samples." << std::endl;
-        return false;
-    }
-
-    auto media = _acquireMedia(id);
-    if (!media) {
-        std::cerr << "Unable to find media." << std::endl;
-        return false;
-    }
-
-    return media->play(samples, size);
+    _acquireMedia(id)->play(samples, size);
 }
 
-bool Sampler::pause(int64_t id) {
+void Sampler::pause(int64_t id) {
     std::lock_guard<std::mutex> lock(mutex);
 
-    auto media = _acquireMedia(id);
-    if (!media) {
-        std::cerr << "Unable to find media." << std::endl;
-        return false;
-    }
-
-    return media->pause();
+    _acquireMedia(id)->pause();
 }
 
-bool Sampler::resume(int64_t id) {
+void Sampler::resume(int64_t id) {
     std::lock_guard<std::mutex> lock(mutex);
 
-    auto media = _acquireMedia(id);
-    if (!media) {
-        std::cerr << "Unable to find media." << std::endl;
-        return false;
-    }
-
-    return media->resume();
+    _acquireMedia(id)->resume();
 }
 
-bool Sampler::stop(int64_t id) {
+void Sampler::stop(int64_t id) {
     std::lock_guard<std::mutex> lock(mutex);
 
-    auto media = _acquireMedia(id);
-    if (!media) {
-        std::cerr << "Unable to find media." << std::endl;
-        return false;
-    }
-
-    return media->stop();
+    _acquireMedia(id)->stop();
 }
 
 void Sampler::close(int64_t id) {
