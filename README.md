@@ -10,7 +10,7 @@ Audio library with basic playback functionality and time stretching
 
 ## Dependencies
 
-- [OpenAL 1.23.1](https://www.openal.org/)
+- [PortAudio](https://github.com/PortAudio/portaudio/)
 
 ## Credits
 
