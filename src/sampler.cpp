@@ -80,18 +80,6 @@ void Sampler::play(int64_t id, uint8_t *samples, uint64_t size) {
     _acquireMedia(id)->play(samples, size);
 }
 
-void Sampler::pause(int64_t id) {
-    std::lock_guard<std::mutex> lock(mutex);
-
-    _acquireMedia(id)->pause();
-}
-
-void Sampler::resume(int64_t id) {
-    std::lock_guard<std::mutex> lock(mutex);
-
-    _acquireMedia(id)->resume();
-}
-
 void Sampler::stop(int64_t id) {
     std::lock_guard<std::mutex> lock(mutex);
 
