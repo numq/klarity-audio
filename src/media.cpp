@@ -123,7 +123,7 @@ void Media::stop() {
     }
 
     if (Pa_IsStreamActive(stream.get()) == 1) {
-        PaError err = Pa_AbortStream(stream.get());
+        PaError err = Pa_StopStream(stream.get());
         if (err != paNoError) {
             throw MediaException("Failed to stop PortAudio stream: " + std::string(Pa_GetErrorText(err)));
         }

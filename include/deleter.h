@@ -7,7 +7,6 @@
 struct PaStreamDeleter {
     void operator()(PaStream *stream) const {
         if (stream) {
-            Pa_AbortStream(stream);
             Pa_CloseStream(stream);
         }
     }
