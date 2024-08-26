@@ -3,7 +3,7 @@ project(klarity_sampler VERSION 1.0.0)
 
 set(CMAKE_CXX_STANDARD 23)
 
-add_library(klarity_sampler SHARED src/media.cpp src/sampler.cpp)
+add_library(klarity_sampler SHARED src/sampler.cpp)
 
 target_include_directories(klarity_sampler PRIVATE include)
 
