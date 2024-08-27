@@ -1,14 +1,9 @@
 #include "sampler.h"
 
 Sampler::Sampler(uint32_t sampleRate, uint32_t channels) {
-    std::lock_guard<std::mutex> lock(mutex);
+    std::lock_guard<std::shared_mutex> lock(mutex);
 
     this->channels = channels;
-
-    PaError err = Pa_Initialize();
-    if (err != paNoError) {
-        throw SamplerException("Failed to initialize PortAudio: " + std::string(Pa_GetErrorText(err)));
-    }
 
     PaDeviceIndex deviceIndex = Pa_GetDefaultOutputDevice();
     if (deviceIndex == paNoDevice) {
@@ -19,11 +14,11 @@ Sampler::Sampler(uint32_t sampleRate, uint32_t channels) {
     outputParameters.device = deviceIndex;
     outputParameters.channelCount = static_cast<int>(channels);
     outputParameters.sampleFormat = paFloat32;
-    outputParameters.suggestedLatency = Pa_GetDeviceInfo(outputParameters.device)->defaultLowOutputLatency;
+    outputParameters.suggestedLatency = Pa_GetDeviceInfo(outputParameters.device)->defaultHighOutputLatency;
     outputParameters.hostApiSpecificStreamInfo = nullptr;
 
     PaStream *rawStream = nullptr;
-    err = Pa_OpenStream(
+    PaError err = Pa_OpenStream(
             &rawStream,
             nullptr,
             &outputParameters,
@@ -44,14 +39,8 @@ Sampler::Sampler(uint32_t sampleRate, uint32_t channels) {
     stretch->presetDefault((int) channels, (float) sampleRate);
 }
 
-Sampler::~Sampler() {
-    std::lock_guard<std::mutex> lock(mutex);
-
-    Pa_Terminate();
-}
-
 void Sampler::setPlaybackSpeed(float factor) {
-    std::lock_guard<std::mutex> lock(mutex);
+    std::lock_guard<std::shared_mutex> lock(mutex);
 
     if (!stretch || stream == nullptr) {
         throw SamplerException("Unable to use uninitialized sampler");
@@ -61,7 +50,7 @@ void Sampler::setPlaybackSpeed(float factor) {
 }
 
 void Sampler::setVolume(float value) {
-    std::lock_guard<std::mutex> lock(mutex);
+    std::lock_guard<std::shared_mutex> lock(mutex);
 
     if (!stretch || stream == nullptr) {
         throw SamplerException("Unable to use uninitialized sampler");
@@ -71,7 +60,7 @@ void Sampler::setVolume(float value) {
 }
 
 void Sampler::start() {
-    std::unique_lock<std::mutex> lock(mutex);
+    std::lock_guard<std::shared_mutex> lock(mutex);
 
     if (!stretch || stream == nullptr) {
         throw SamplerException("Unable to use uninitialized sampler");
@@ -88,7 +77,7 @@ void Sampler::start() {
 }
 
 void Sampler::play(const uint8_t *samples, uint64_t size) {
-    std::unique_lock<std::mutex> lock(mutex);
+    std::lock_guard<std::shared_mutex> lock(mutex);
 
     if (!stretch || stream == nullptr || Pa_IsStreamActive(stream.get()) <= 0) {
         throw SamplerException("Unable to use uninitialized sampler");
@@ -120,14 +109,11 @@ void Sampler::play(const uint8_t *samples, uint64_t size) {
         }
     }
 
-    PaError err = Pa_WriteStream(stream.get(), output.data(), outputSamples);
-    if (err != paNoError) {
-        throw SamplerException("Failed to write PortAudio stream: " + std::string(Pa_GetErrorText(err)));
-    }
+    Pa_WriteStream(stream.get(), output.data(), outputSamples);
 }
 
 void Sampler::stop() {
-    std::lock_guard<std::mutex> lock(mutex);
+    std::lock_guard<std::shared_mutex> lock(mutex);
 
     if (!stretch || stream == nullptr) {
         throw SamplerException("Unable to use uninitialized sampler");

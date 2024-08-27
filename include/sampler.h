@@ -4,7 +4,7 @@
 #include <cstring>
 #include <iostream>
 #include <memory>
-#include <mutex>
+#include <shared_mutex>
 #include "exception.h"
 #include "stretch/stretch.h"
 #include "portaudio.h"
@@ -12,7 +12,7 @@
 
 struct Sampler {
 private:
-    std::mutex mutex;
+    std::shared_mutex mutex;
     uint32_t channels;
     std::unique_ptr<PaStream, PaStreamDeleter> stream;
     std::unique_ptr<signalsmith::stretch::SignalsmithStretch<float>, SignalsmithStretchDeleter> stretch;
@@ -21,8 +21,6 @@ private:
 
 public:
     explicit Sampler(uint32_t sampleRate, uint32_t channels);
-
-    ~Sampler();
 
     void setPlaybackSpeed(float factor);
 
