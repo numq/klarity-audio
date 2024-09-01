@@ -1,8 +1,6 @@
 #include "sampler.h"
 
 Sampler::Sampler(uint32_t sampleRate, uint32_t channels) {
-    std::lock_guard<std::shared_mutex> lock(mutex);
-
     this->channels = channels;
 
     PaDeviceIndex deviceIndex = Pa_GetDefaultOutputDevice();
@@ -40,30 +38,24 @@ Sampler::Sampler(uint32_t sampleRate, uint32_t channels) {
 }
 
 void Sampler::setPlaybackSpeed(float factor) {
-    std::lock_guard<std::shared_mutex> lock(mutex);
-
     if (!stretch || stream == nullptr) {
-        throw SamplerException("Unable to use uninitialized sampler");
+        throw SamplerException("Unable to set playback speed on uninitialized sampler");
     }
 
     playbackSpeedFactor = factor;
 }
 
 void Sampler::setVolume(float value) {
-    std::lock_guard<std::shared_mutex> lock(mutex);
-
     if (!stretch || stream == nullptr) {
-        throw SamplerException("Unable to use uninitialized sampler");
+        throw SamplerException("Unable to setVolume on uninitialized sampler");
     }
 
     volume = value;
 }
 
 void Sampler::start() {
-    std::lock_guard<std::shared_mutex> lock(mutex);
-
     if (!stretch || stream == nullptr) {
-        throw SamplerException("Unable to use uninitialized sampler");
+        throw SamplerException("Unable to start uninitialized sampler");
     }
 
     if (Pa_IsStreamActive(stream.get()) == 1) {
@@ -77,10 +69,8 @@ void Sampler::start() {
 }
 
 void Sampler::play(const uint8_t *samples, uint64_t size) {
-    std::lock_guard<std::shared_mutex> lock(mutex);
-
     if (!stretch || stream == nullptr || Pa_IsStreamActive(stream.get()) <= 0) {
-        throw SamplerException("Unable to use uninitialized sampler");
+        throw SamplerException("Unable to play uninitialized sampler");
     }
 
     if (size <= 0) {
@@ -113,10 +103,8 @@ void Sampler::play(const uint8_t *samples, uint64_t size) {
 }
 
 void Sampler::stop() {
-    std::lock_guard<std::shared_mutex> lock(mutex);
-
     if (!stretch || stream == nullptr) {
-        throw SamplerException("Unable to use uninitialized sampler");
+        throw SamplerException("Unable to stop uninitialized sampler");
     }
 
     if (Pa_IsStreamActive(stream.get()) == 1) {
