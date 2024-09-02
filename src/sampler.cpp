@@ -38,6 +38,8 @@ Sampler::Sampler(uint32_t sampleRate, uint32_t channels) {
 }
 
 void Sampler::setPlaybackSpeed(float factor) {
+    std::shared_lock<std::shared_mutex> lock(mutex);
+
     if (!stretch || stream == nullptr) {
         throw SamplerException("Unable to set playback speed on uninitialized sampler");
     }
@@ -46,6 +48,8 @@ void Sampler::setPlaybackSpeed(float factor) {
 }
 
 void Sampler::setVolume(float value) {
+    std::shared_lock<std::shared_mutex> lock(mutex);
+
     if (!stretch || stream == nullptr) {
         throw SamplerException("Unable to setVolume on uninitialized sampler");
     }
@@ -54,6 +58,8 @@ void Sampler::setVolume(float value) {
 }
 
 void Sampler::start() {
+    std::unique_lock<std::shared_mutex> lock(mutex);
+
     if (!stretch || stream == nullptr) {
         throw SamplerException("Unable to start uninitialized sampler");
     }
@@ -69,6 +75,8 @@ void Sampler::start() {
 }
 
 void Sampler::play(const uint8_t *samples, uint64_t size) {
+    std::unique_lock<std::shared_mutex> lock(mutex);
+
     if (!stretch || stream == nullptr || Pa_IsStreamActive(stream.get()) <= 0) {
         throw SamplerException("Unable to play uninitialized sampler");
     }
@@ -103,6 +111,8 @@ void Sampler::play(const uint8_t *samples, uint64_t size) {
 }
 
 void Sampler::stop() {
+    std::unique_lock<std::shared_mutex> lock(mutex);
+
     if (!stretch || stream == nullptr) {
         throw SamplerException("Unable to stop uninitialized sampler");
     }

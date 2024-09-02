@@ -4,6 +4,8 @@
 #include <cstring>
 #include <iostream>
 #include <memory>
+#include <mutex>
+#include <shared_mutex>
 #include "exception.h"
 #include "stretch/stretch.h"
 #include "portaudio.h"
@@ -11,6 +13,7 @@
 
 struct Sampler {
 private:
+    std::shared_mutex mutex;
     uint32_t channels;
     std::unique_ptr<PaStream, PaStreamDeleter> stream;
     std::unique_ptr<signalsmith::stretch::SignalsmithStretch<float>, SignalsmithStretchDeleter> stretch;
