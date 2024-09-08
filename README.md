@@ -10,7 +10,6 @@ Audio library with playback functionality and time stretching
 
 ## Dependencies
 
-- [PortAudio](https://github.com/PortAudio/portaudio/) - library for audio playback
+- [PortAudio](https://github.com/PortAudio/portaudio/) - audio playback library
 
-* [Signalsmith Audio](https://github.com/Signalsmith-Audio/signalsmith-stretch) - awesome C++11 library for pitch and
-  time stretching
+* [Signalsmith Audio](https://github.com/Signalsmith-Audio/signalsmith-stretch) - awesome pitch and time stretching library
