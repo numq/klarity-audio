@@ -22,7 +22,7 @@ Sampler::Sampler(uint32_t sampleRate, uint32_t channels) {
             &outputParameters,
             sampleRate,
             paFramesPerBufferUnspecified,
-            paNoFlag,
+            paClipOff,
             nullptr,
             nullptr
     );
@@ -57,7 +57,7 @@ void Sampler::setVolume(float value) {
     volume = value;
 }
 
-void Sampler::start() {
+int Sampler::start() {
     std::unique_lock<std::mutex> lock(mutex);
 
     if (!stretch || stream == nullptr) {
@@ -72,6 +72,8 @@ void Sampler::start() {
     if (err != paNoError) {
         throw SamplerException("Failed to start PortAudio stream: " + std::string(Pa_GetErrorText(err)));
     }
+
+    return static_cast<int>(Pa_GetStreamInfo(stream.get())->outputLatency * 1'000'000);
 }
 
 void Sampler::play(const uint8_t *samples, uint64_t size) {
