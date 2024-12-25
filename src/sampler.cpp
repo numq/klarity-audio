@@ -1,6 +1,7 @@
 #include "sampler.h"
 
 Sampler::Sampler(uint32_t sampleRate, uint32_t channels) {
+    this->sampleRate = sampleRate;
     this->channels = channels;
 
     PaDeviceIndex deviceIndex = Pa_GetDefaultOutputDevice();
@@ -34,7 +35,7 @@ Sampler::Sampler(uint32_t sampleRate, uint32_t channels) {
 
     stretch.reset(new signalsmith::stretch::SignalsmithStretch<float>());
 
-    stretch->presetDefault((int) channels, (float) sampleRate);
+    stretch->presetDefault(static_cast<int>(channels), static_cast<float>(sampleRate));
 }
 
 void Sampler::setPlaybackSpeed(float factor) {
@@ -68,12 +69,20 @@ int Sampler::start() {
         throw SamplerException("Unable to start active sampler");
     }
 
+    stretch->reset();
+
     PaError err = Pa_StartStream(stream.get());
     if (err != paNoError) {
         throw SamplerException("Failed to start PortAudio stream: " + std::string(Pa_GetErrorText(err)));
     }
 
-    return static_cast<int>(Pa_GetStreamInfo(stream.get())->outputLatency * 1'000'000);
+    double outputLatency = Pa_GetStreamInfo(stream.get())->outputLatency;
+
+    double stretchLatency =
+            (stretch->inputLatency() + stretch->outputLatency()) / static_cast<double>(this->sampleRate) *
+            playbackSpeedFactor;
+
+    return static_cast<int>((outputLatency + stretchLatency) * 1'000'000);
 }
 
 void Sampler::play(const uint8_t *samples, uint64_t size) {
@@ -124,7 +133,5 @@ void Sampler::stop() {
         if (err != paNoError) {
             throw SamplerException("Failed to stop PortAudio stream: " + std::string(Pa_GetErrorText(err)));
         }
-
-        stretch->reset();
     }
 }
