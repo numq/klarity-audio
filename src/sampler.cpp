@@ -78,9 +78,7 @@ int Sampler::start() {
 
     double outputLatency = Pa_GetStreamInfo(stream.get())->outputLatency;
 
-    double stretchLatency =
-            (stretch->inputLatency() + stretch->outputLatency()) / static_cast<double>(this->sampleRate) *
-            playbackSpeedFactor;
+    double stretchLatency = (stretch->inputLatency() + stretch->outputLatency()) / static_cast<double>(this->sampleRate);
 
     return static_cast<int>((outputLatency + stretchLatency) * 1'000'000);
 }
